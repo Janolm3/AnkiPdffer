@@ -1,0 +1,18 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Anki runtime
+settings.json
+
+# Build output
+dist/
+
+# Debug exports
+*.pdf
+anki_debug_*.html
+anki_pdf_log.txt
