@@ -1599,6 +1599,7 @@ class PDFExportDialog(QDialog):
             return _restore_svg(c, svgs)
 
         content_h_px = page_h_px - 2 * top_mg_px
+        break_h_px = page_h_px if compact else content_h_px
         if show_title:
             _title_h = int((bsz + 6) * lh + 22)  # h1
             _sub_h   = int((bsz - 2) * lh + min_gap + 2) if "::" in deck_name else 0
@@ -1633,7 +1634,9 @@ class PDFExportDialog(QDialog):
             img_est = min(n_images, 5) * img_h if has_image else 0
             base = overhead + text_h + img_est + min_gap + 10
             if compact:
-                return int(base * 1.05) if has_image else int(base)
+                if has_image and text_chars > 600:
+                    return int(base * 1.35)
+                return int(base)
             return int(base * 1.1) if has_image else int(base * 1.05)
 
         cards_ok = 0
@@ -1662,8 +1665,9 @@ class PDFExportDialog(QDialog):
                     est = estimate_card_h(sec_count, has_img, _text_len((q or '') + (a or '')), n_imgs)
                     accumulated_h[0] += est
 
-                    if accumulated_h[0] > content_h_px:
-                        pb = emit_page_break(est <= page_h_px * 0.75)
+                    if accumulated_h[0] > break_h_px:
+                        use_mg = (not has_img) if compact else (est <= page_h_px * 0.75)
+                        pb = emit_page_break(use_mg)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
@@ -1724,8 +1728,9 @@ class PDFExportDialog(QDialog):
                     est = estimate_card_h(sec_count, has_img, _text_len(all_content), n_imgs)
                     accumulated_h[0] += est
 
-                    if accumulated_h[0] > content_h_px:
-                        pb = emit_page_break(est <= page_h_px * 0.75)
+                    if accumulated_h[0] > break_h_px:
+                        use_mg = (not has_img) if compact else (est <= page_h_px * 0.75)
+                        pb = emit_page_break(use_mg)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
