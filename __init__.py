@@ -52,6 +52,7 @@ _STRINGS = {
         "cb_zebra": "Zebra",
         "lbl_page": "Page:",
         "lbl_margins": "Margins:",
+        "lbl_top_margin": "Top margin:",
         "lbl_padding": "Padding:",
         "lbl_gap": "Min gap:",
         "lbl_lineheight": "Line height:",
@@ -146,6 +147,7 @@ _STRINGS = {
         "cb_zebra": "Zebra",
         "lbl_page": "Strona:",
         "lbl_margins": "Marginesy:",
+        "lbl_top_margin": "Góra/dół:",
         "lbl_padding": "Padding:",
         "lbl_gap": "Min gap:",
         "lbl_lineheight": "Interlinia:",
@@ -458,6 +460,7 @@ DEFAULT_SETTINGS = {
     "zebra": False,
     "page": 0,
     "margins": 15,
+    "top_margin": 10,
     "padding": 12,
     "min_gap": 8,
     "line_height": 1.40,
@@ -622,6 +625,7 @@ class PDFExportDialog(QDialog):
         v0.addWidget(self.page_combo)
         pg.addLayout(v0)
         _spin(_t("lbl_margins"), "margin_spin", 5, 40, 15, " mm")
+        _spin(_t("lbl_top_margin"), "top_margin_spin", 0, 40, 10, " mm")
         _spin(_t("lbl_padding"), "padding_spin", 2, 50, 12, " px")
         _spin(_t("lbl_gap"), "gap_spin", 0, 80, 8, " px")
 
@@ -1034,7 +1038,9 @@ class PDFExportDialog(QDialog):
                 "A5": QPageSize.PageSizeId.A5,
             }
             size = QPageSize(ps_map.get(self.page_combo.currentText(), QPageSize.PageSizeId.A4))
-            margins = QMarginsF(0, 0, 0, 0)
+            _mg = float(self.margin_spin.value())
+            _top = float(self.top_margin_spin.value())
+            margins = QMarginsF(_mg, _top, _mg, _top)
             layout = QPageLayout(size, QPageLayout.Orientation.Portrait, margins,
                                  QPageLayout.Unit.Millimeter)
             self.page.pdfPrintingFinished.connect(self._printed)
@@ -1091,6 +1097,7 @@ class PDFExportDialog(QDialog):
             "zebra": self.zebra_cb.isChecked(),
             "page": self.page_combo.currentIndex(),
             "margins": self.margin_spin.value(),
+            "top_margin": self.top_margin_spin.value(),
             "padding": self.padding_spin.value(),
             "min_gap": self.gap_spin.value(),
             "line_height": self.lh_spin.value(),
@@ -1116,6 +1123,7 @@ class PDFExportDialog(QDialog):
         self.zebra_cb.setChecked(s.get("zebra", False))
         self.page_combo.setCurrentIndex(s.get("page", 0))
         self.margin_spin.setValue(s.get("margins", 15))
+        self.top_margin_spin.setValue(s.get("top_margin", 10))
         self.padding_spin.setValue(s.get("padding", 12))
         self.gap_spin.setValue(s.get("min_gap", 4))
         self.lh_spin.setValue(s.get("line_height", 1.40))
@@ -1187,6 +1195,7 @@ class PDFExportDialog(QDialog):
         img_h = self.img_h_spin.value()
         ps = self.page_combo.currentText()
         mg = self.margin_spin.value()
+        top_mg = self.top_margin_spin.value()
         show_title = self.show_title_cb.isChecked()
         show_nums = self.card_numbers_cb.isChecked()
         zebra = self.zebra_cb.isChecked()
@@ -1199,6 +1208,7 @@ class PDFExportDialog(QDialog):
         page_w_px = pw_mm * ppm
         page_h_px = ph_mm * ppm
         mg_px = mg * ppm
+        top_mg_px = top_mg * ppm
 
         themes = [
             dict(body="#ffffff", card="#ffffff", brd="#e5e7eb", txt="#111827",
@@ -1354,11 +1364,10 @@ class PDFExportDialog(QDialog):
                 "{content}"
                 "html{{background-color:{bg}!important;min-height:100%;"
                 "-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"
-                "body{{background-color:{bg}!important;margin:0;padding:{mg}mm;"
-                "padding-top:{top_mg}mm;"
+                "body{{background-color:{bg}!important;margin:0;padding:0;"
                 "-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"
                 ".page-content{{position:relative;z-index:1}}"
-            ).format(ps=ps, mg=mg, top_mg=mg, content=content_css, bg=t["body"])
+            ).format(ps=ps, mg=mg, content=content_css, bg=t["body"])
 
         elif mode == "preview":
             wrapper_css = (
@@ -1437,7 +1446,6 @@ class PDFExportDialog(QDialog):
 
         if mode == "pdf":
             _bg = t["body"]
-            _top = mg
             html_open = (
                 '<!DOCTYPE html>'
                 '<html style="background-color:{bg};margin:0;padding:0;'
@@ -1446,14 +1454,13 @@ class PDFExportDialog(QDialog):
             ).format(bg=_bg)
             body_open = (
                 '</style></head>'
-                '<body{cls} style="background-color:{bg};margin:0;'
-                'padding:{mg}mm;padding-top:{top}mm;'
+                '<body{cls} style="background-color:{bg};margin:0;padding:0;'
                 '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important">'
                 '<div style="position:fixed;top:0;left:0;right:0;bottom:0;'
                 'background-color:{bg};z-index:0;'
                 '-webkit-print-color-adjust:exact!important;'
                 'print-color-adjust:exact!important"></div>'
-            ).format(cls=body_cls, bg=_bg, mg=mg, top=_top)
+            ).format(cls=body_cls, bg=_bg)
             html = [html_open, wrapper_css, body_open]
         else:
             html = [
@@ -1591,7 +1598,7 @@ class PDFExportDialog(QDialog):
             c = sanitise_html(c.strip())
             return _restore_svg(c, svgs)
 
-        content_h_px = page_h_px - 2 * mg_px
+        content_h_px = page_h_px - 2 * top_mg_px
         if show_title:
             _title_h = int((bsz + 6) * lh + 22)  # h1
             _sub_h   = int((bsz - 2) * lh + min_gap + 2) if "::" in deck_name else 0
@@ -1609,9 +1616,7 @@ class PDFExportDialog(QDialog):
                     '<span>' + _t("page_break_lbl") + '</span></div>'
                     '<div class="page"><div class="page-content">'
                 )
-            if compact:
-                return '<div style="break-before:page;height:0;margin:0;padding:0"></div>'
-            return ""
+            return '<div style="break-before:page;height:0;margin:0;padding:0"></div>'
 
         def _text_len(html_str):
             return len(re.sub(r'<[^>]+>', '', html_str or ''))
