@@ -1623,8 +1623,7 @@ class PDFExportDialog(QDialog):
             return len(re.sub(r'<[^>]+>', '', html_str or ''))
 
         def estimate_card_h(sections_count, has_image, text_chars=0, n_images=1):
-            eff_padh = c_padh if compact else padh
-            overhead = (18 if show_nums else 0) + sections_count * eff_padh * 2 + max(0, sections_count - 1)
+            overhead = (18 if show_nums else 0) + sections_count * padh * 2 + max(0, sections_count - 1)
             cpp = max(15, int(65 * 13.0 / max(bsz, 8)))
             if text_chars > 0:
                 n_lines = max(sections_count * 2, (text_chars + cpp - 1) // cpp)
@@ -1634,7 +1633,7 @@ class PDFExportDialog(QDialog):
             img_est = min(n_images, 5) * img_h if has_image else 0
             base = overhead + text_h + img_est + min_gap + 10
             if compact:
-                return int(base * 1.1) if has_image else int(base)
+                return int(base * 1.05) if has_image else int(base)
             return int(base * 1.1) if has_image else int(base * 1.05)
 
         cards_ok = 0
@@ -1664,7 +1663,7 @@ class PDFExportDialog(QDialog):
                     accumulated_h[0] += est
 
                     if accumulated_h[0] > content_h_px:
-                        pb = emit_page_break(est <= page_h_px * 0.8)
+                        pb = emit_page_break(est <= page_h_px * 0.75)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
@@ -1726,7 +1725,7 @@ class PDFExportDialog(QDialog):
                     accumulated_h[0] += est
 
                     if accumulated_h[0] > content_h_px:
-                        pb = emit_page_break(est <= page_h_px * 0.8)
+                        pb = emit_page_break(est <= page_h_px * 0.75)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
