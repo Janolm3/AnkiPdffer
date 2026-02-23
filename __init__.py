@@ -1279,6 +1279,9 @@ class PDFExportDialog(QDialog):
         if compact:
             c_padx = max(5, (pad + 2) * 2 // 3)
             compact_css = (
+                "@page{{margin:{top_mg}mm {mg}mm {mg}mm {mg}mm}}"
+                "body{{padding:0!important}}"
+                "h1.doc-title{{margin-top:0!important}}"
                 "body.compact .card{{box-shadow:none;border-radius:4px}}"
                 "body.compact .fb{{padding:{cph}px {cpx}px}}"
                 "body.compact .rs{{padding:{cph}px {cpx}px}}"
@@ -1287,7 +1290,7 @@ class PDFExportDialog(QDialog):
                 "body.compact .fv ul,body.compact .fv ol{{margin:.1em 0}}"
                 "body.compact .fv li{{margin-bottom:0}}"
                 "body.compact img{{margin:2px 0}}"
-            ).format(cph=c_padh, cpx=c_padx)
+            ).format(cph=c_padh, cpx=c_padx, top_mg=top_mg, mg=mg)
         else:
             compact_css = ""
 
@@ -1599,7 +1602,6 @@ class PDFExportDialog(QDialog):
             return _restore_svg(c, svgs)
 
         content_h_px = page_h_px - 2 * top_mg_px
-        break_h_px = page_h_px if compact else content_h_px
         if show_title:
             _title_h = int((bsz + 6) * lh + 22)  # h1
             _sub_h   = int((bsz - 2) * lh + min_gap + 2) if "::" in deck_name else 0
@@ -1634,8 +1636,6 @@ class PDFExportDialog(QDialog):
             img_est = min(n_images, 5) * img_h if has_image else 0
             base = overhead + text_h + img_est + min_gap + 10
             if compact:
-                if has_image and text_chars > 600:
-                    return int(base * 1.35)
                 return int(base)
             return int(base * 1.1) if has_image else int(base * 1.05)
 
@@ -1665,9 +1665,8 @@ class PDFExportDialog(QDialog):
                     est = estimate_card_h(sec_count, has_img, _text_len((q or '') + (a or '')), n_imgs)
                     accumulated_h[0] += est
 
-                    if accumulated_h[0] > break_h_px:
-                        use_mg = (not has_img) if compact else (est <= page_h_px * 0.75)
-                        pb = emit_page_break(use_mg)
+                    if not compact and accumulated_h[0] > content_h_px:
+                        pb = emit_page_break(est <= page_h_px * 0.75)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
@@ -1728,9 +1727,8 @@ class PDFExportDialog(QDialog):
                     est = estimate_card_h(sec_count, has_img, _text_len(all_content), n_imgs)
                     accumulated_h[0] += est
 
-                    if accumulated_h[0] > break_h_px:
-                        use_mg = (not has_img) if compact else (est <= page_h_px * 0.75)
-                        pb = emit_page_break(use_mg)
+                    if not compact and accumulated_h[0] > content_h_px:
+                        pb = emit_page_break(est <= page_h_px * 0.75)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
