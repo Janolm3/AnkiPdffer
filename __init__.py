@@ -1607,7 +1607,7 @@ class PDFExportDialog(QDialog):
             title_h_est = 0
         accumulated_h = [title_h_est]
 
-        def emit_page_break():
+        def emit_page_break(use_margin=True):
             accumulated_h[0] = 0
             if mode == "preview":
                 return (
@@ -1616,12 +1616,13 @@ class PDFExportDialog(QDialog):
                     '<span>' + _t("page_break_lbl") + '</span></div>'
                     '<div class="page"><div class="page-content">'
                 )
-            return '<div style="break-before:page;height:{}px;display:block;margin:0;padding:0"></div>'.format(int(top_mg_px))
+            h = int(top_mg_px) if use_margin else 0
+            return '<div style="break-before:page;height:{}px;display:block;margin:0;padding:0"></div>'.format(h)
 
         def _text_len(html_str):
             return len(re.sub(r'<[^>]+>', '', html_str or ''))
 
-        def estimate_card_h(sections_count, has_image, text_chars=0):
+        def estimate_card_h(sections_count, has_image, text_chars=0, n_images=1):
             eff_padh = c_padh if compact else padh
             overhead = (18 if show_nums else 0) + sections_count * eff_padh * 2 + max(0, sections_count - 1)
             cpp = max(15, int(65 * 13.0 / max(bsz, 8)))
@@ -1630,7 +1631,7 @@ class PDFExportDialog(QDialog):
             else:
                 n_lines = sections_count * 3
             text_h = n_lines * bsz * lh
-            img_est = img_h if has_image else 0
+            img_est = min(n_images, 5) * img_h if has_image else 0
             base = overhead + text_h + img_est + min_gap + 10
             if compact:
                 return int(base * 1.1) if has_image else int(base)
@@ -1658,11 +1659,12 @@ class PDFExportDialog(QDialog):
 
                     sec_count = (1 if q else 0) + (1 if a else 0)
                     has_img = "base64" in q or "base64" in a
-                    est = estimate_card_h(sec_count, has_img, _text_len((q or '') + (a or '')))
+                    n_imgs = max(1, (q or '').count('base64') + (a or '').count('base64')) if has_img else 0
+                    est = estimate_card_h(sec_count, has_img, _text_len((q or '') + (a or '')), n_imgs)
                     accumulated_h[0] += est
 
                     if accumulated_h[0] > content_h_px:
-                        pb = emit_page_break()
+                        pb = emit_page_break(est <= page_h_px * 0.8)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
@@ -1719,11 +1721,12 @@ class PDFExportDialog(QDialog):
                     sec_count = (1 if sq else 0) + (1 if sa else 0) + (1 if sx else 0)
                     all_content = "".join(sq) + "".join(sa) + "".join(sx)
                     has_img = "base64" in all_content
-                    est = estimate_card_h(sec_count, has_img, _text_len(all_content))
+                    n_imgs = max(1, all_content.count('base64')) if has_img else 0
+                    est = estimate_card_h(sec_count, has_img, _text_len(all_content), n_imgs)
                     accumulated_h[0] += est
 
                     if accumulated_h[0] > content_h_px:
-                        pb = emit_page_break()
+                        pb = emit_page_break(est <= page_h_px * 0.8)
                         if pb:
                             html.append(pb)
                         accumulated_h[0] = est
