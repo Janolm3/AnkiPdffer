@@ -36,9 +36,9 @@ _STRINGS = {
         "lbl_font": "Font:",
         "lbl_size": "Size:",
         "lbl_width": "Width:",
-        "width_narrow": "Narrow",
-        "width_medium": "Medium",
-        "width_wide": "Wide",
+        "width_narrow": "Narrow (520px)",
+        "width_medium": "Medium (680px)",
+        "width_wide": "Wide (860px)",
         "width_full": "Full",
         "width_custom": "Custom",
         "lbl_layout": "Layout:",
@@ -110,6 +110,7 @@ _STRINGS = {
         "rendered_front": "Front",
         "rendered_back": "Back",
         "page_break_lbl": "✂ Page break",
+        "cb_high_contrast": "High contrast (override card styles)",
     },
     "pl": {
         "window_title": "Anki → PDF",
@@ -129,9 +130,9 @@ _STRINGS = {
         "lbl_font": "Czcionka:",
         "lbl_size": "Rozmiar:",
         "lbl_width": "Szerokość:",
-        "width_narrow": "Wąska",
-        "width_medium": "Średnia",
-        "width_wide": "Szeroka",
+        "width_narrow": "Wąska (520px)",
+        "width_medium": "Średnia (680px)",
+        "width_wide": "Szeroka (860px)",
         "width_full": "Pełna",
         "width_custom": "Własna",
         "lbl_layout": "Układ:",
@@ -204,6 +205,7 @@ _STRINGS = {
         "rendered_front": "Przód",
         "rendered_back": "Tył",
         "page_break_lbl": "✂ Podział strony",
+        "cb_high_contrast": "Wysoki kontrast (nadpisz style kart)",
     },
 }
 
@@ -465,6 +467,7 @@ DEFAULT_SETTINGS = {
     "grid": False,
     "language": "en",
     "debug": False,
+    "high_contrast": False,
 }
 
 
@@ -587,6 +590,8 @@ class PDFExportDialog(QDialog):
         r_cb.addWidget(self.card_numbers_cb)
         self.zebra_cb = QCheckBox(_t("cb_zebra"))
         r_cb.addWidget(self.zebra_cb)
+        self.high_contrast_cb = QCheckBox(_t("cb_high_contrast"))
+        r_cb.addWidget(self.high_contrast_cb)
         r_cb.addStretch()
         bl.addLayout(r_cb)
 
@@ -991,6 +996,12 @@ class PDFExportDialog(QDialog):
                     QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls, True)
             except AttributeError:
                 pass
+            _bg_colors = ["#ffffff", "#111111", "#f8fafc"]
+            _bg = _bg_colors[self.theme_radio.currentIndex()]
+            try:
+                self.page.setBackgroundColor(QColor(_bg))
+            except Exception:
+                pass
             self.page.loadFinished.connect(lambda ok: self._loaded(ok, sp))
             self.page.load(QUrl.fromLocalFile(self.temp_html_path))
         except Exception as e:
@@ -1013,7 +1024,6 @@ class PDFExportDialog(QDialog):
 
     def _do_print(self, path):
         self.export_btn.setText(_t("printing"))
-        mg = self.margin_spin.value()
         try:
             from PyQt6.QtCore import QMarginsF
             from PyQt6.QtGui import QPageLayout, QPageSize
@@ -1024,7 +1034,7 @@ class PDFExportDialog(QDialog):
                 "A5": QPageSize.PageSizeId.A5,
             }
             size = QPageSize(ps_map.get(self.page_combo.currentText(), QPageSize.PageSizeId.A4))
-            margins = QMarginsF(mg, mg, mg, mg)
+            margins = QMarginsF(0, 0, 0, 0)
             layout = QPageLayout(size, QPageLayout.Orientation.Portrait, margins,
                                  QPageLayout.Unit.Millimeter)
             self.page.pdfPrintingFinished.connect(self._printed)
@@ -1090,6 +1100,7 @@ class PDFExportDialog(QDialog):
             "grid": self.grid_cb.isChecked(),
             "language": "en" if self.lang_radio.currentIndex() == 0 else "pl",
             "debug": self.debug_cb.isChecked(),
+            "high_contrast": self.high_contrast_cb.isChecked(),
         }
 
     def _apply_settings(self, s):
@@ -1114,6 +1125,7 @@ class PDFExportDialog(QDialog):
         self.grid_cb.setChecked(s.get("grid", False))
         self.lang_radio.setCurrentIndex(0 if s.get("language", "en") == "en" else 1)
         self.debug_cb.setChecked(s.get("debug", False))
+        self.high_contrast_cb.setChecked(s.get("high_contrast", False))
 
     def _save_settings(self):
         try:
@@ -1179,6 +1191,7 @@ class PDFExportDialog(QDialog):
         show_nums = self.card_numbers_cb.isChecked()
         zebra = self.zebra_cb.isChecked()
         strip = self.strip_html_cb.isChecked()
+        high_contrast = self.high_contrast_cb.isChecked()
         card_max_w = self._get_card_max_width()
 
         pw_mm, ph_mm = self._get_page_dims()
@@ -1236,6 +1249,24 @@ class PDFExportDialog(QDialog):
             ".rs [style*='color:#fff']{{color:inherit!important}}"
         )
 
+        io_css_str = (
+            ".io-wrap{position:relative;display:inline-block;line-height:0;max-width:100%}"
+            ".io-wrap img{display:block;max-width:100%!important;height:auto!important;"
+            "max-height:none!important;border-radius:0}"
+            ".io-wrap svg{position:absolute;top:0;left:0;"
+            "width:100%!important;height:100%!important}"
+        )
+        if high_contrast:
+            _c = t["txt"]
+            hc_css_str = (
+                ".fv *{color:" + _c + "!important;background:transparent!important;"
+                "background-color:transparent!important}"
+                ".rs *{color:" + _c + "!important;background:transparent!important;"
+                "background-color:transparent!important}"
+            )
+        else:
+            hc_css_str = ""
+
         if compact:
             c_padh = max(3, padh * 2 // 3)
             c_padx = max(5, (pad + 2) * 2 // 3)
@@ -1255,7 +1286,9 @@ class PDFExportDialog(QDialog):
         content_css = (
             "@import url('https://fonts.googleapis.com/css2?"
             "family=Inter:wght@400;500;600;700;800&display=swap');"
-            "*,*::before,*::after{{font-family:{font}!important;box-sizing:border-box!important}}"
+            "*,*::before,*::after{{font-family:{font}!important;box-sizing:border-box!important;"
+            "-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"
+            "html{{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"
             "body{{color:{txt};font-size:{bsz}px;line-height:{lh};"
             "-webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;"
             "word-wrap:break-word;overflow-wrap:break-word;"
@@ -1300,6 +1333,8 @@ class PDFExportDialog(QDialog):
             "{content_max_w}"
             "{sanitise}"
             "{compact_overrides}"
+            "{io_css}"
+            "{hc_css}"
         ).format(
             font=font, txt=t["txt"], bsz=bsz, lh=lh,
             h1sz=bsz + 6, acc=t["acc"], mut=t["mut"], subsz=bsz - 2, subgap=min_gap + 2,
@@ -1309,14 +1344,21 @@ class PDFExportDialog(QDialog):
             content_max_w=content_max_w_css,
             sanitise=sanitise_css,
             compact_overrides=compact_css,
+            io_css=io_css_str,
+            hc_css=hc_css_str,
         )
 
         if mode == "pdf":
             wrapper_css = (
-                "@page{{size:{ps};margin:{mg}mm}}"
+                "@page{{size:{ps};margin:0}}"
                 "{content}"
-                "body{{background:{bg};margin:0;padding:0}}"
-            ).format(ps=ps, mg=mg, content=content_css, bg=t["body"])
+                "html{{background-color:{bg}!important;min-height:100%;"
+                "-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"
+                "body{{background-color:{bg}!important;margin:0;padding:{mg}mm;"
+                "padding-top:{top_mg}mm;"
+                "-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"
+                ".page-content{{position:relative;z-index:1}}"
+            ).format(ps=ps, mg=mg, top_mg=mg, content=content_css, bg=t["body"])
 
         elif mode == "preview":
             wrapper_css = (
@@ -1392,11 +1434,33 @@ class PDFExportDialog(QDialog):
         if grid_mode:
             body_classes.append("grid-mode")
         body_cls = ' class="{}"'.format(" ".join(body_classes)) if body_classes else ''
-        html = [
-            "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
-            wrapper_css,
-            "</style></head><body{}>".format(body_cls),
-        ]
+
+        if mode == "pdf":
+            _bg = t["body"]
+            _top = mg
+            html_open = (
+                '<!DOCTYPE html>'
+                '<html style="background-color:{bg};margin:0;padding:0;'
+                '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important">'
+                '<head><meta charset="utf-8"><style>'
+            ).format(bg=_bg)
+            body_open = (
+                '</style></head>'
+                '<body{cls} style="background-color:{bg};margin:0;'
+                'padding:{mg}mm;padding-top:{top}mm;'
+                '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important">'
+                '<div style="position:fixed;top:0;left:0;right:0;bottom:0;'
+                'background-color:{bg};z-index:0;'
+                '-webkit-print-color-adjust:exact!important;'
+                'print-color-adjust:exact!important"></div>'
+            ).format(cls=body_cls, bg=_bg, mg=mg, top=_top)
+            html = [html_open, wrapper_css, body_open]
+        else:
+            html = [
+                "<!DOCTYPE html><html><head><meta charset='utf-8'><style>",
+                wrapper_css,
+                "</style></head><body{}>".format(body_cls),
+            ]
 
         if mode == "preview":
             html.append('<div class="page"><div class="page-content">')
@@ -1574,6 +1638,11 @@ class PDFExportDialog(QDialog):
                     nt_name = note.note_type()["name"]
                     q = proc_media(clean_rendered(card.question()))
                     a = proc_media(clean_rendered(card.answer()))
+                    if "image occlusion" in nt_name.lower():
+                        if q:
+                            q = '<div class="io-wrap">{}</div>'.format(q)
+                        if a:
+                            a = '<div class="io-wrap">{}</div>'.format(a)
                     if not q and not a:
                         cards_skip += 1
                         continue
