@@ -118,6 +118,14 @@ Clicking any image in the exported HTML opens a fullscreen lightbox:
 
 ---
 
+## To Do
+
+- **Better solution for Image Occlusion**
+- **Black background in the final PDF**
+- **High contrast mode for the quirky styling on the creator of the cards side**
+
+---
+
 ## License
 
 MIT — free to use, modify, and distribute.
