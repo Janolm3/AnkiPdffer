@@ -1,0 +1,8 @@
+{
+  "package": "AnkiPdffer",
+  "name": "AnkiPdffer – Export Deck to PDF / HTML",
+  "human_version": "1.0.0",
+  "min_point_version": 231100,
+  "max_point_version": -1,
+  "conflicts": []
+}
