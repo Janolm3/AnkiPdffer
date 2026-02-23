@@ -1038,9 +1038,7 @@ class PDFExportDialog(QDialog):
                 "A5": QPageSize.PageSizeId.A5,
             }
             size = QPageSize(ps_map.get(self.page_combo.currentText(), QPageSize.PageSizeId.A4))
-            _mg = float(self.margin_spin.value())
-            _top = float(self.top_margin_spin.value())
-            margins = QMarginsF(_mg, _top, _mg, _top)
+            margins = QMarginsF(0, 0, 0, 0)
             layout = QPageLayout(size, QPageLayout.Orientation.Portrait, margins,
                                  QPageLayout.Unit.Millimeter)
             self.page.pdfPrintingFinished.connect(self._printed)
@@ -1304,7 +1302,7 @@ class PDFExportDialog(QDialog):
             "word-wrap:break-word;overflow-wrap:break-word;"
             "-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important}}"
             "h1.doc-title{{text-align:center;font-size:{h1sz}px;font-weight:800;"
-            "color:{acc};margin:12px 0 2px;padding-top:8px;letter-spacing:-.03em}}"
+            "color:{acc};margin:{top_mgpx}px 0 2px;padding-top:0;letter-spacing:-.03em}}"
             ".sub{{text-align:center;color:{mut};font-size:{subsz}px;"
             "font-weight:500;margin:0 0 {subgap}px;letter-spacing:-.01em}}"
             ".card{{{card_extra}background:{card};margin-bottom:{gap}px!important;"
@@ -1349,6 +1347,7 @@ class PDFExportDialog(QDialog):
             font=font, txt=t["txt"], bsz=bsz, lh=lh,
             h1sz=bsz + 6, acc=t["acc"], mut=t["mut"], subsz=bsz - 2, subgap=min_gap + 2,
             card_extra=card_extra, card=t["card"], gap=css_gap,
+            top_mgpx=int(top_mg_px),
             pad=pad, padh=padh, padx=pad + 2,
             div=t["div"], flsz=label_sz, brd=t["brd"], img_h=img_h,
             content_max_w=content_max_w_css,
@@ -1454,13 +1453,14 @@ class PDFExportDialog(QDialog):
             ).format(bg=_bg)
             body_open = (
                 '</style></head>'
-                '<body{cls} style="background-color:{bg};margin:0;padding:0;'
+                '<body{cls} style="background-color:{bg};margin:0;'
+                'padding:{mg}mm;padding-top:0;'
                 '-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important">'
                 '<div style="position:fixed;top:0;left:0;right:0;bottom:0;'
                 'background-color:{bg};z-index:0;'
                 '-webkit-print-color-adjust:exact!important;'
                 'print-color-adjust:exact!important"></div>'
-            ).format(cls=body_cls, bg=_bg)
+            ).format(cls=body_cls, bg=_bg, mg=mg)
             html = [html_open, wrapper_css, body_open]
         else:
             html = [
@@ -1616,7 +1616,7 @@ class PDFExportDialog(QDialog):
                     '<span>' + _t("page_break_lbl") + '</span></div>'
                     '<div class="page"><div class="page-content">'
                 )
-            return '<div style="break-before:page;height:0;margin:0;padding:0"></div>'
+            return '<div style="break-before:page;height:{}px;display:block;margin:0;padding:0"></div>'.format(int(top_mg_px))
 
         def _text_len(html_str):
             return len(re.sub(r'<[^>]+>', '', html_str or ''))
@@ -1629,8 +1629,11 @@ class PDFExportDialog(QDialog):
             else:
                 n_lines = sections_count * 3
             text_h = n_lines * bsz * lh
-            img_est = min(img_h, 200) if has_image else 0
-            return int(overhead + text_h + img_est + min_gap + 10)
+            img_est = img_h if has_image else 0
+            base = overhead + text_h + img_est + min_gap + 10
+            if compact:
+                return int(base)
+            return int(base * 1.1) if has_image else int(base * 1.05)
 
         cards_ok = 0
         cards_skip = 0
