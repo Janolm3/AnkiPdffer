@@ -1275,8 +1275,8 @@ class PDFExportDialog(QDialog):
         else:
             hc_css_str = ""
 
+        c_padh = max(3, padh * 2 // 3)
         if compact:
-            c_padh = max(3, padh * 2 // 3)
             c_padx = max(5, (pad + 2) * 2 // 3)
             compact_css = (
                 "body.compact .card{{box-shadow:none;border-radius:4px}}"
@@ -1622,7 +1622,8 @@ class PDFExportDialog(QDialog):
             return len(re.sub(r'<[^>]+>', '', html_str or ''))
 
         def estimate_card_h(sections_count, has_image, text_chars=0):
-            overhead = (18 if show_nums else 0) + sections_count * padh * 2 + max(0, sections_count - 1)
+            eff_padh = c_padh if compact else padh
+            overhead = (18 if show_nums else 0) + sections_count * eff_padh * 2 + max(0, sections_count - 1)
             cpp = max(15, int(65 * 13.0 / max(bsz, 8)))
             if text_chars > 0:
                 n_lines = max(sections_count * 2, (text_chars + cpp - 1) // cpp)
@@ -1632,7 +1633,7 @@ class PDFExportDialog(QDialog):
             img_est = img_h if has_image else 0
             base = overhead + text_h + img_est + min_gap + 10
             if compact:
-                return int(base)
+                return int(base * 1.1) if has_image else int(base)
             return int(base * 1.1) if has_image else int(base * 1.05)
 
         cards_ok = 0
