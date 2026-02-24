@@ -1279,6 +1279,8 @@ class PDFExportDialog(QDialog):
         if compact:
             c_padx = max(5, (pad + 2) * 2 // 3)
             compact_css = (
+                "@page{{margin-top:{top_mg}mm}}"
+                "h1.doc-title{{margin-top:0!important}}"
                 "body.compact .card{{box-shadow:none;border-radius:4px}}"
                 "body.compact .fb{{padding:{cph}px {cpx}px}}"
                 "body.compact .rs{{padding:{cph}px {cpx}px}}"
@@ -1287,7 +1289,7 @@ class PDFExportDialog(QDialog):
                 "body.compact .fv ul,body.compact .fv ol{{margin:.1em 0}}"
                 "body.compact .fv li{{margin-bottom:0}}"
                 "body.compact img{{margin:2px 0}}"
-            ).format(cph=c_padh, cpx=c_padx)
+            ).format(cph=c_padh, cpx=c_padx, top_mg=top_mg)
         else:
             compact_css = ""
 
@@ -1762,8 +1764,8 @@ class PDFExportDialog(QDialog):
 
         if compact and card_items:
             if mode == "pdf":
-                # Render all cards sequentially; JS script (injected below) will
-                # measure actual rendered heights and do FFD bin-packing in the browser
+                # Render sequentially — @page margin-top handles spacing,
+                # CSS page-break-inside:avoid handles card integrity
                 for *_, parts in card_items:
                     html.extend(parts)
             else:
@@ -1798,51 +1800,6 @@ class PDFExportDialog(QDialog):
             html.append("</div></div>")
         else:
             html.append("</div>")
-
-        if compact and mode == "pdf":
-            # Inject JS that measures actual rendered heights, runs FFD bin-packing,
-            # reorders cards in DOM, and inserts break-before:page spacers.
-            # Runs synchronously at end of body — layout is forced by offsetHeight access.
-            html.append((
-                '<script>'
-                '(function(){'
-                'var pH=%.2f,tMg=%.2f,bMg=%.2f,uH=pH-bMg;'
-                'var ct=document.querySelector(".page-content");'
-                'if(!ct)return;'
-                'var tH=0,t=ct.querySelector("h1.doc-title"),s=ct.querySelector(".sub");'
-                'if(t)tH+=t.offsetHeight+(parseFloat(window.getComputedStyle(t).marginBottom)||0);'
-                'if(s)tH+=s.offsetHeight+(parseFloat(window.getComputedStyle(s).marginBottom)||0);'
-                'var cards=Array.from(ct.querySelectorAll(".card"));'
-                'if(!cards.length)return;'
-                'var hs=cards.map(function(c){'
-                'return c.offsetHeight+(parseFloat(window.getComputedStyle(c).marginBottom)||0);'
-                '});'
-                'var pages=[],used=[];'
-                'var ord=hs.map(function(_,i){return i;});'
-                'ord.sort(function(a,b){return hs[b]-hs[a];});'
-                'ord.forEach(function(i){'
-                'var h=hs[i];'
-                'for(var p=0;p<pages.length;p++){'
-                'var cap=p===0?Math.max(uH-tH,uH*0.35):uH-tMg;'
-                'if(used[p]+h<=cap){pages[p].push(i);used[p]+=h;return;}'
-                '}'
-                'pages.push([i]);used.push(h);'
-                '});'
-                'pages.sort(function(a,b){return Math.min.apply(null,a)-Math.min.apply(null,b);});'
-                'pages.forEach(function(pg){pg.sort(function(a,b){return a-b;});});'
-                'cards.forEach(function(c){c.parentNode&&c.parentNode.removeChild(c);});'
-                'pages.forEach(function(pg,pi){'
-                'if(pi>0){'
-                'var d=document.createElement("div");'
-                'd.style.cssText="break-before:page;display:block;margin:0;padding:0;line-height:0";'
-                'd.style.height=tMg+"px";'
-                'ct.appendChild(d);'
-                '}'
-                'pg.forEach(function(ci){ct.appendChild(cards[ci]);});'
-                '});'
-                '})();'
-                '</script>'
-            ) % (page_h_px, top_mg_px, mg_px))
 
         if mode == "legacy":
             html.append(
