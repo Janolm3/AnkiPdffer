@@ -1764,9 +1764,22 @@ class PDFExportDialog(QDialog):
 
         if compact and card_items:
             if mode == "pdf":
-                # Render sequentially — @page margin-top handles spacing,
-                # CSS page-break-inside:avoid handles card integrity
-                for *_, parts in card_items:
+                # Sequential bin-packing: explicit break-before:page divs with
+                # height:0 — @page margin-top handles top spacing, no spacer needed.
+                # Break only when adding the next card would overflow, and only if
+                # at least one card is already on the current page (prevents empty pages).
+                acc_h = title_h_est
+                cards_on_page = 0
+                for _, est, parts in card_items:
+                    if acc_h + est > break_h_px and cards_on_page > 0:
+                        html.append(
+                            '<div style="break-before:page;height:0;'
+                            'display:block;margin:0;padding:0"></div>'
+                        )
+                        acc_h = 0
+                        cards_on_page = 0
+                    acc_h += est
+                    cards_on_page += 1
                     html.extend(parts)
             else:
                 # Preview: Python FFD with estimates + explicit page-break markers
