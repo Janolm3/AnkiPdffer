@@ -1279,8 +1279,7 @@ class PDFExportDialog(QDialog):
         if compact:
             c_padx = max(5, (pad + 2) * 2 // 3)
             compact_css = (
-                "@page{{margin:{top_mg}mm {mg}mm {mg}mm {mg}mm}}"
-                "body{{padding:0!important}}"
+                "@page{{margin-top:{top_mg}mm}}"
                 "h1.doc-title{{margin-top:0!important}}"
                 "body.compact .card{{box-shadow:none;border-radius:4px}}"
                 "body.compact .fb{{padding:{cph}px {cpx}px}}"
@@ -1290,7 +1289,7 @@ class PDFExportDialog(QDialog):
                 "body.compact .fv ul,body.compact .fv ol{{margin:.1em 0}}"
                 "body.compact .fv li{{margin-bottom:0}}"
                 "body.compact img{{margin:2px 0}}"
-            ).format(cph=c_padh, cpx=c_padx, top_mg=top_mg, mg=mg)
+            ).format(cph=c_padh, cpx=c_padx, top_mg=top_mg)
         else:
             compact_css = ""
 
@@ -1602,6 +1601,7 @@ class PDFExportDialog(QDialog):
             return _restore_svg(c, svgs)
 
         content_h_px = page_h_px - 2 * top_mg_px
+        break_h_px = (page_h_px - top_mg_px - mg_px) if compact else content_h_px
         if show_title:
             _title_h = int((bsz + 6) * lh + 22)  # h1
             _sub_h   = int((bsz - 2) * lh + min_gap + 2) if "::" in deck_name else 0
@@ -1619,6 +1619,8 @@ class PDFExportDialog(QDialog):
                     '<span>' + _t("page_break_lbl") + '</span></div>'
                     '<div class="page"><div class="page-content">'
                 )
+            if compact:
+                return '<div style="break-before:page;height:0;display:block;margin:0;padding:0"></div>'
             h = int(top_mg_px) if use_margin else 0
             return '<div style="break-before:page;height:{}px;display:block;margin:0;padding:0"></div>'.format(h)
 
@@ -1641,6 +1643,7 @@ class PDFExportDialog(QDialog):
 
         cards_ok = 0
         cards_skip = 0
+        card_items = []  # compact: [(orig_idx, est, parts)]
 
         if render_mode == 1:
             for idx, cid in enumerate(card_ids):
@@ -1660,33 +1663,37 @@ class PDFExportDialog(QDialog):
                         continue
 
                     sec_count = (1 if q else 0) + (1 if a else 0)
-                    has_img = "base64" in q or "base64" in a
+                    has_img = "base64" in (q or '') or "base64" in (a or '')
                     n_imgs = max(1, (q or '').count('base64') + (a or '').count('base64')) if has_img else 0
                     est = estimate_card_h(sec_count, has_img, _text_len((q or '') + (a or '')), n_imgs)
-                    accumulated_h[0] += est
-
-                    if not compact and accumulated_h[0] > content_h_px:
-                        pb = emit_page_break(est <= page_h_px * 0.75)
-                        if pb:
-                            html.append(pb)
-                        accumulated_h[0] = est
 
                     alt = ' style="background:{}"'.format(t["alt"]) if zebra and idx % 2 == 1 else ""
-                    html.append('<div class="card"{}>'.format(alt))
+                    parts = ['<div class="card"{}>'.format(alt)]
                     if show_nums:
-                        html.append('<div class="cnum">#{} &middot; {}</div>'.format(idx + 1, nt_name))
+                        parts.append('<div class="cnum">#{} &middot; {}</div>'.format(idx + 1, nt_name))
                     if q:
-                        html.append(
+                        parts.append(
                             '<div class="sec-q"><div class="rs">'
                             '<div class="label">{}</div>{}</div></div>'.format(_t("rendered_front"), q))
                     if q and a:
-                        html.append('<hr class="sec-div">')
+                        parts.append('<hr class="sec-div">')
                     if a:
-                        html.append(
+                        parts.append(
                             '<div class="sec-a"><div class="rs">'
                             '<div class="label">{}</div>{}</div></div>'.format(
                                 _t("rendered_back"), a))
-                    html.append("</div>")
+                    parts.append("</div>")
+
+                    if compact:
+                        card_items.append((idx, est, parts))
+                    else:
+                        accumulated_h[0] += est
+                        if accumulated_h[0] > content_h_px:
+                            pb = emit_page_break(est <= page_h_px * 0.75)
+                            if pb:
+                                html.append(pb)
+                            accumulated_h[0] = est
+                        html.extend(parts)
                     cards_ok += 1
                 except Exception as e:
                     logger.error("Karta #{}".format(idx), e)
@@ -1725,33 +1732,67 @@ class PDFExportDialog(QDialog):
                     has_img = "base64" in all_content
                     n_imgs = max(1, all_content.count('base64')) if has_img else 0
                     est = estimate_card_h(sec_count, has_img, _text_len(all_content), n_imgs)
-                    accumulated_h[0] += est
-
-                    if not compact and accumulated_h[0] > content_h_px:
-                        pb = emit_page_break(est <= page_h_px * 0.75)
-                        if pb:
-                            html.append(pb)
-                        accumulated_h[0] = est
 
                     alt = ' style="background:{}"'.format(t["alt"]) if zebra and idx % 2 == 1 else ""
-                    html.append('<div class="card"{}>'.format(alt))
+                    parts = ['<div class="card"{}>'.format(alt)]
                     if show_nums:
-                        html.append('<div class="cnum">#{}</div>'.format(idx + 1))
+                        parts.append('<div class="cnum">#{}</div>'.format(idx + 1))
                     if sq:
-                        html.append('<div class="sec-q">{}</div>'.format("".join(sq)))
+                        parts.append('<div class="sec-q">{}</div>'.format("".join(sq)))
                     if sq and sa:
-                        html.append('<hr class="sec-div">')
+                        parts.append('<hr class="sec-div">')
                     if sa:
-                        html.append('<div class="sec-a">{}</div>'.format("".join(sa)))
+                        parts.append('<div class="sec-a">{}</div>'.format("".join(sa)))
                     if sx and (sq or sa):
-                        html.append('<hr class="sec-div">')
+                        parts.append('<hr class="sec-div">')
                     if sx:
-                        html.append('<div class="sec-x">{}</div>'.format("".join(sx)))
-                    html.append("</div>")
+                        parts.append('<div class="sec-x">{}</div>'.format("".join(sx)))
+                    parts.append("</div>")
+
+                    if compact:
+                        card_items.append((idx, est, parts))
+                    else:
+                        accumulated_h[0] += est
+                        if accumulated_h[0] > content_h_px:
+                            pb = emit_page_break(est <= page_h_px * 0.75)
+                            if pb:
+                                html.append(pb)
+                            accumulated_h[0] = est
+                        html.extend(parts)
                     cards_ok += 1
                 except Exception as e:
                     logger.error("Karta #{}".format(idx), e)
                     cards_skip += 1
+
+        if compact and card_items:
+            # FFD bin-packing: sort by height desc, assign to first page with room
+            sorted_items = sorted(card_items, key=lambda c: c[1], reverse=True)
+            pages_ffd = []   # list of lists of (orig_idx, est, parts)
+            pages_used = []  # accumulated height per page
+            for item in sorted_items:
+                _, est, parts = item
+                placed = False
+                for pi in range(len(pages_ffd)):
+                    if pages_used[pi] + est <= break_h_px:
+                        pages_ffd[pi].append(item)
+                        pages_used[pi] += est
+                        placed = True
+                        break
+                if not placed:
+                    pages_ffd.append([item])
+                    pages_used.append(est)
+            # Sort pages by earliest card index; within each page sort chronologically
+            pages_ffd.sort(key=lambda p: min(c[0] for c in p))
+            for page in pages_ffd:
+                page.sort(key=lambda c: c[0])
+            # Render
+            for pi, page_cards in enumerate(pages_ffd):
+                if pi > 0:
+                    pb = emit_page_break()
+                    if pb:
+                        html.append(pb)
+                for *_, parts in page_cards:
+                    html.extend(parts)
 
         if mode == "preview":
             html.append("</div></div>")
