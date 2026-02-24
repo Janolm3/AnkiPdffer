@@ -1279,8 +1279,6 @@ class PDFExportDialog(QDialog):
         if compact:
             c_padx = max(5, (pad + 2) * 2 // 3)
             compact_css = (
-                "@page{{margin-top:{top_mg}mm}}"
-                "h1.doc-title{{margin-top:0!important}}"
                 "body.compact .card{{box-shadow:none;border-radius:4px}}"
                 "body.compact .fb{{padding:{cph}px {cpx}px}}"
                 "body.compact .rs{{padding:{cph}px {cpx}px}}"
@@ -1289,7 +1287,7 @@ class PDFExportDialog(QDialog):
                 "body.compact .fv ul,body.compact .fv ol{{margin:.1em 0}}"
                 "body.compact .fv li{{margin-bottom:0}}"
                 "body.compact img{{margin:2px 0}}"
-            ).format(cph=c_padh, cpx=c_padx, top_mg=top_mg)
+            ).format(cph=c_padh, cpx=c_padx)
         else:
             compact_css = ""
 
@@ -1619,8 +1617,6 @@ class PDFExportDialog(QDialog):
                     '<span>' + _t("page_break_lbl") + '</span></div>'
                     '<div class="page"><div class="page-content">'
                 )
-            if compact:
-                return '<div style="break-before:page;height:0;display:block;margin:0;padding:0"></div>'
             h = int(top_mg_px) if use_margin else 0
             return '<div style="break-before:page;height:{}px;display:block;margin:0;padding:0"></div>'.format(h)
 
@@ -1765,39 +1761,88 @@ class PDFExportDialog(QDialog):
                     cards_skip += 1
 
         if compact and card_items:
-            # FFD bin-packing: sort by height desc, assign to first page with room
-            sorted_items = sorted(card_items, key=lambda c: c[1], reverse=True)
-            pages_ffd = []   # list of lists of (orig_idx, est, parts)
-            pages_used = []  # accumulated height per page
-            for item in sorted_items:
-                _, est, parts = item
-                placed = False
-                for pi in range(len(pages_ffd)):
-                    if pages_used[pi] + est <= break_h_px:
-                        pages_ffd[pi].append(item)
-                        pages_used[pi] += est
-                        placed = True
-                        break
-                if not placed:
-                    pages_ffd.append([item])
-                    pages_used.append(est)
-            # Sort pages by earliest card index; within each page sort chronologically
-            pages_ffd.sort(key=lambda p: min(c[0] for c in p))
-            for page in pages_ffd:
-                page.sort(key=lambda c: c[0])
-            # Render
-            for pi, page_cards in enumerate(pages_ffd):
-                if pi > 0:
-                    pb = emit_page_break()
-                    if pb:
-                        html.append(pb)
-                for *_, parts in page_cards:
+            if mode == "pdf":
+                # Render all cards sequentially; JS script (injected below) will
+                # measure actual rendered heights and do FFD bin-packing in the browser
+                for *_, parts in card_items:
                     html.extend(parts)
+            else:
+                # Preview: Python FFD with estimates + explicit page-break markers
+                sorted_items = sorted(card_items, key=lambda c: c[1], reverse=True)
+                pages_ffd = []
+                pages_used = []
+                for item in sorted_items:
+                    _, est, parts = item
+                    placed = False
+                    for pi in range(len(pages_ffd)):
+                        if pages_used[pi] + est <= break_h_px:
+                            pages_ffd[pi].append(item)
+                            pages_used[pi] += est
+                            placed = True
+                            break
+                    if not placed:
+                        pages_ffd.append([item])
+                        pages_used.append(est)
+                pages_ffd.sort(key=lambda p: min(c[0] for c in p))
+                for page in pages_ffd:
+                    page.sort(key=lambda c: c[0])
+                for pi, page_cards in enumerate(pages_ffd):
+                    if pi > 0:
+                        pb = emit_page_break()
+                        if pb:
+                            html.append(pb)
+                    for *_, parts in page_cards:
+                        html.extend(parts)
 
         if mode == "preview":
             html.append("</div></div>")
         else:
             html.append("</div>")
+
+        if compact and mode == "pdf":
+            # Inject JS that measures actual rendered heights, runs FFD bin-packing,
+            # reorders cards in DOM, and inserts break-before:page spacers.
+            # Runs synchronously at end of body — layout is forced by offsetHeight access.
+            html.append((
+                '<script>'
+                '(function(){'
+                'var pH=%.2f,tMg=%.2f,bMg=%.2f,uH=pH-bMg;'
+                'var ct=document.querySelector(".page-content");'
+                'if(!ct)return;'
+                'var tH=0,t=ct.querySelector("h1.doc-title"),s=ct.querySelector(".sub");'
+                'if(t)tH+=t.offsetHeight+(parseFloat(window.getComputedStyle(t).marginBottom)||0);'
+                'if(s)tH+=s.offsetHeight+(parseFloat(window.getComputedStyle(s).marginBottom)||0);'
+                'var cards=Array.from(ct.querySelectorAll(".card"));'
+                'if(!cards.length)return;'
+                'var hs=cards.map(function(c){'
+                'return c.offsetHeight+(parseFloat(window.getComputedStyle(c).marginBottom)||0);'
+                '});'
+                'var pages=[],used=[];'
+                'var ord=hs.map(function(_,i){return i;});'
+                'ord.sort(function(a,b){return hs[b]-hs[a];});'
+                'ord.forEach(function(i){'
+                'var h=hs[i];'
+                'for(var p=0;p<pages.length;p++){'
+                'var cap=p===0?Math.max(uH-tH,uH*0.35):uH-tMg;'
+                'if(used[p]+h<=cap){pages[p].push(i);used[p]+=h;return;}'
+                '}'
+                'pages.push([i]);used.push(h);'
+                '});'
+                'pages.sort(function(a,b){return Math.min.apply(null,a)-Math.min.apply(null,b);});'
+                'pages.forEach(function(pg){pg.sort(function(a,b){return a-b;});});'
+                'cards.forEach(function(c){c.parentNode&&c.parentNode.removeChild(c);});'
+                'pages.forEach(function(pg,pi){'
+                'if(pi>0){'
+                'var d=document.createElement("div");'
+                'd.style.cssText="break-before:page;display:block;margin:0;padding:0;line-height:0";'
+                'd.style.height=tMg+"px";'
+                'ct.appendChild(d);'
+                '}'
+                'pg.forEach(function(ci){ct.appendChild(cards[ci]);});'
+                '});'
+                '})();'
+                '</script>'
+            ) % (page_h_px, top_mg_px, mg_px))
 
         if mode == "legacy":
             html.append(
